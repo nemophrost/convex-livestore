@@ -1,0 +1,24 @@
+onlyBuiltDependencies:
+  - esbuild
+  - '@tailwindcss/oxide'
+allowBuilds:
+  '@parcel/watcher': true
+  esbuild: true
+  msgpackr-extract: true
+minimumReleaseAgeExclude:
+  - prettier@3.8.4
+  - convex@1.41.0
+  - '@eslint-react/ast@5.8.18'
+  - '@eslint-react/core@5.8.18'
+  - '@eslint-react/eslint-plugin@5.8.18'
+  - '@eslint-react/eslint@5.8.18'
+  - '@eslint-react/jsx@5.8.18'
+  - '@eslint-react/shared@5.8.18'
+  - '@eslint-react/var@5.8.18'
+  - '@types/node@25.9.3'
+  - eslint-plugin-react-dom@5.8.18
+  - eslint-plugin-react-jsx@5.8.18
+  - eslint-plugin-react-naming-convention@5.8.18
+  - eslint-plugin-react-rsc@5.8.18
+  - eslint-plugin-react-web-api@5.8.18
+  - eslint-plugin-react-x@5.8.18

@@ -1,0 +1,76 @@
+import globals from "globals";
+import pluginJs from "@eslint/js";
+import tseslint from "typescript-eslint";
+import reactHooks from "eslint-plugin-react-hooks";
+import reactRefresh from "eslint-plugin-react-refresh";
+import convexPlugin from "@convex-dev/eslint-plugin";
+import eslintReact from "@eslint-react/eslint-plugin";
+
+export default [
+  {
+    ignores: [
+      "dist/**",
+      "example/dist/**",
+      "*.config.{js,mjs,cjs,ts,tsx}",
+      "example/**/*.config.{js,mjs,cjs,ts,tsx}",
+      "**/_generated/",
+      "initTemplate.mjs",
+    ],
+  },
+  {
+    files: ["src/**/*.{js,mjs,cjs,ts,tsx}", "example/**/*.{js,mjs,cjs,ts,tsx}"],
+    languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: {
+        project: [
+          "./tsconfig.json",
+          "./example/tsconfig.json",
+          "./example/convex/tsconfig.json",
+        ],
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  pluginJs.configs.recommended,
+  ...tseslint.configs.recommended,
+  // Convex code - Worker environment
+  {
+    files: ["src/**/*.{ts,tsx}", "example/convex/**/*.{ts,tsx}"],
+    ignores: ["src/react/**"],
+    languageOptions: {
+      globals: globals.worker,
+    },
+    plugins: {
+      "@convex-dev": convexPlugin,
+    },
+    rules: {
+      "@convex-dev/no-old-registered-function-syntax": "error",
+      "@convex-dev/require-args-validator": "error",
+      "@convex-dev/explicit-table-ids": "error",
+      "@convex-dev/no-filter-in-query": "warn",
+      "@convex-dev/import-wrong-runtime": "error",
+      "@typescript-eslint/no-floating-promises": "error",
+    },
+  },
+  // React app code - Browser environment
+  {
+    files: ["src/react/**/*.{ts,tsx}", "example/src/**/*.{ts,tsx}"],
+    languageOptions: {
+      ecmaVersion: 2020,
+      globals: globals.browser,
+    },
+    plugins: {
+      ...eslintReact.configs["recommended-typescript"].plugins,
+      "react-hooks": reactHooks,
+      "react-refresh": reactRefresh,
+    },
+    rules: {
+      ...eslintReact.configs["recommended-typescript"].rules,
+      ...reactHooks.configs.recommended.rules,
+      "react-refresh/only-export-components": [
+        "warn",
+        { allowConstantExport: true },
+      ],
+    },
+  },
+];
