@@ -64,6 +64,8 @@ Throw an error to reject the request. Return the resolved `storeId` (a string) t
 
 `clearStore` deletes all events and resets the head for a given store. Call it when you need to wipe a store's history — for example, during development or when a user's data should be reset.
 
+The sync API stores LiveStore global events as an append-only log. Event payloads use LiveStore's `args` field as a JSON-encoded string, along with `seqNum`, `parentSeqNum`, `name`, `clientId`, and `sessionId`. Pushed batches must be contiguous and start at the current store head; duplicate retries with the same event payload are treated as idempotent.
+
 ## Browsing the event log
 
 `listEvents` is a paginated query for browsing a store's event log, newest-first. It's intended for admin or audit views, not for sync. Use it with Convex's [`usePaginatedQuery`](https://docs.convex.dev/api/modules/react#usepaginatedquery):

@@ -21,7 +21,7 @@ describe("example", () => {
           seqNum: 1,
           parentSeqNum: 0,
           name: "testEvent",
-          data: '{"hello":"world"}',
+          args: '{"hello":"world"}',
           clientId: "c1",
           sessionId: "s1",
         },

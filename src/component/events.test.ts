@@ -23,7 +23,7 @@ describe("component lib", () => {
           seqNum: 1,
           parentSeqNum: 0,
           name: "todoCreated",
-          data: '{"id":"abc"}',
+          args: '{"id":"abc"}',
           clientId: "client-1",
           sessionId: "session-1",
         },
@@ -31,7 +31,7 @@ describe("component lib", () => {
           seqNum: 2,
           parentSeqNum: 1,
           name: "todoUpdated",
-          data: '{"id":"abc","text":"hello"}',
+          args: '{"id":"abc","text":"hello"}',
           clientId: "client-1",
           sessionId: "session-1",
         },
@@ -53,7 +53,7 @@ describe("component lib", () => {
           seqNum: 1,
           parentSeqNum: 0,
           name: "event1",
-          data: "{}",
+          args: "{}",
           clientId: "c1",
           sessionId: "s1",
         },
@@ -61,7 +61,7 @@ describe("component lib", () => {
           seqNum: 2,
           parentSeqNum: 1,
           name: "event2",
-          data: "{}",
+          args: "{}",
           clientId: "c1",
           sessionId: "s1",
         },
@@ -69,7 +69,7 @@ describe("component lib", () => {
           seqNum: 3,
           parentSeqNum: 2,
           name: "event3",
-          data: "{}",
+          args: "{}",
           clientId: "c1",
           sessionId: "s1",
         },
@@ -97,7 +97,7 @@ describe("component lib", () => {
         seqNum: i + 1,
         parentSeqNum: i,
         name: `e${i + 1}`,
-        data: "{}",
+        args: "{}",
         clientId: "c1",
         sessionId: "s1",
       })),
@@ -128,7 +128,7 @@ describe("component lib", () => {
         seqNum: i + 1,
         parentSeqNum: i,
         name: `e${i + 1}`,
-        data: "{}",
+        args: "{}",
         clientId: "c1",
         sessionId: "s1",
       })),
@@ -159,7 +159,7 @@ describe("component lib", () => {
       seqNum: 1,
       parentSeqNum: 0,
       name: "event1",
-      data: "{}",
+      args: "{}",
       clientId: "c1",
       sessionId: "s1",
     };
@@ -176,6 +176,147 @@ describe("component lib", () => {
     expect(head).toBe(1);
   });
 
+  test("duplicate push with different payload is rejected", async () => {
+    const t = initConvexTest();
+    const storeId = "store-1";
+
+    const event = {
+      seqNum: 1,
+      parentSeqNum: 0,
+      name: "event1",
+      args: "{}",
+      clientId: "c1",
+      sessionId: "s1",
+    };
+
+    await t.mutation(api.events.push, { storeId, events: [event] });
+
+    await expect(
+      t.mutation(api.events.push, {
+        storeId,
+        events: [{ ...event, args: '{"changed":true}' }],
+      }),
+    ).rejects.toThrow("Duplicate event payload does not match existing event");
+  });
+
+  test("push rejects batches that do not start at the current head", async () => {
+    const t = initConvexTest();
+    const storeId = "store-1";
+
+    await t.mutation(api.events.push, {
+      storeId,
+      events: [
+        {
+          seqNum: 1,
+          parentSeqNum: 0,
+          name: "event1",
+          args: "{}",
+          clientId: "c1",
+          sessionId: "s1",
+        },
+      ],
+    });
+
+    await expect(
+      t.mutation(api.events.push, {
+        storeId,
+        events: [
+          {
+            seqNum: 2,
+            parentSeqNum: 0,
+            name: "event2",
+            args: "{}",
+            clientId: "c2",
+            sessionId: "s2",
+          },
+        ],
+      }),
+    ).rejects.toThrow("Event parentSeqNum mismatch");
+  });
+
+  test("push rejects non-contiguous batches", async () => {
+    const t = initConvexTest();
+    const storeId = "store-1";
+
+    await expect(
+      t.mutation(api.events.push, {
+        storeId,
+        events: [
+          {
+            seqNum: 1,
+            parentSeqNum: 0,
+            name: "event1",
+            args: "{}",
+            clientId: "c1",
+            sessionId: "s1",
+          },
+          {
+            seqNum: 3,
+            parentSeqNum: 1,
+            name: "event3",
+            args: "{}",
+            clientId: "c1",
+            sessionId: "s1",
+          },
+        ],
+      }),
+    ).rejects.toThrow("Event seqNum mismatch");
+  });
+
+  test("push rejects malformed event args", async () => {
+    const t = initConvexTest();
+    const storeId = "store-1";
+
+    await expect(
+      t.mutation(api.events.push, {
+        storeId,
+        events: [
+          {
+            seqNum: 1,
+            parentSeqNum: 0,
+            name: "event1",
+            args: "{",
+            clientId: "c1",
+            sessionId: "s1",
+          },
+        ],
+      }),
+    ).rejects.toThrow("Event args must be valid JSON");
+
+    const head = await t.query(api.events.getHead, { storeId });
+    expect(head).toBe(0);
+  });
+
+  test("push rejects oversized batches", async () => {
+    const t = initConvexTest();
+    const storeId = "store-1";
+
+    await expect(
+      t.mutation(api.events.push, {
+        storeId,
+        events: Array.from({ length: 501 }, (_, i) => ({
+          seqNum: i + 1,
+          parentSeqNum: i,
+          name: `e${i + 1}`,
+          args: "{}",
+          clientId: "c1",
+          sessionId: "s1",
+        })),
+      }),
+    ).rejects.toThrow("Cannot push more than 500 events");
+  });
+
+  test("push rejects empty batches", async () => {
+    const t = initConvexTest();
+
+    await expect(
+      t.mutation(api.events.push, {
+        storeId: "store-1",
+        events: [],
+      }),
+    ).rejects.toThrow("At least one event is required");
+  });
+
   test("multiple stores are isolated", async () => {
     const t = initConvexTest();
 
@@ -186,7 +327,7 @@ describe("component lib", () => {
           seqNum: 1,
           parentSeqNum: 0,
           name: "eventA",
-          data: "{}",
+          args: "{}",
           clientId: "c1",
           sessionId: "s1",
         },
@@ -200,7 +341,7 @@ describe("component lib", () => {
           seqNum: 1,
           parentSeqNum: 0,
           name: "eventB",
-          data: "{}",
+          args: "{}",
           clientId: "c2",
           sessionId: "s2",
         },
@@ -244,7 +385,7 @@ describe("component lib", () => {
           seqNum: 1,
           parentSeqNum: 0,
           name: "e1",
-          data: "{}",
+          args: "{}",
           clientId: "c1",
           sessionId: "s1",
         },
@@ -252,7 +393,7 @@ describe("component lib", () => {
           seqNum: 2,
           parentSeqNum: 1,
           name: "e2",
-          data: "{}",
+          args: "{}",
           clientId: "c1",
           sessionId: "s1",
         },
@@ -278,7 +419,7 @@ describe("component lib", () => {
           seqNum: 1,
           parentSeqNum: 0,
           name: "e1",
-          data: "{}",
+          args: "{}",
           clientId: "c1",
           sessionId: "s1",
         },
@@ -291,7 +432,7 @@ describe("component lib", () => {
           seqNum: 1,
           parentSeqNum: 0,
           name: "e2",
-          data: "{}",
+          args: "{}",
           clientId: "c1",
           sessionId: "s1",
         },

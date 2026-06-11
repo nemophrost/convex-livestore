@@ -38,7 +38,7 @@ describe("client tests", () => {
           seqNum: 1,
           parentSeqNum: 0,
           name: "testEvent",
-          data: '{"key":"value"}',
+          args: '{"key":"value"}',
           clientId: "c1",
           sessionId: "s1",
         },
@@ -54,7 +54,7 @@ describe("client tests", () => {
     });
     expect(result!.events).toHaveLength(1);
     expect(result!.events[0].name).toBe("testEvent");
-    expect(result!.events[0].data).toBe('{"key":"value"}');
+    expect(result!.events[0].args).toBe('{"key":"value"}');
   });
 
   test("different users have isolated stores", async () => {
@@ -68,7 +68,7 @@ describe("client tests", () => {
           seqNum: 1,
           parentSeqNum: 0,
           name: "user1Event",
-          data: "{}",
+          args: "{}",
           clientId: "c1",
           sessionId: "s1",
         },
@@ -82,7 +82,7 @@ describe("client tests", () => {
           seqNum: 1,
           parentSeqNum: 0,
           name: "user2Event",
-          data: "{}",
+          args: "{}",
           clientId: "c2",
           sessionId: "s2",
         },

@@ -64,7 +64,7 @@ export function exposeApi(
             seqNum: v.number(),
             parentSeqNum: v.number(),
             name: v.string(),
-            data: v.string(),
+            args: v.string(),
             clientId: v.string(),
             sessionId: v.string(),
           }),
@@ -161,7 +161,3 @@ export function exposeApi(
 }
 
 export type { ComponentApi };
-
-// Re-export types for the sync backend (the actual implementation is in ./sync.ts)
-export { makeConvexSyncBackend } from "./sync.js";
-export type { ConvexLivestoreApiRefs } from "./sync.js";

@@ -71,7 +71,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         {
           events: Array<{
             clientId: string;
-            data: string;
+            args: string;
             name: string;
             parentSeqNum: number;
             seqNum: number;

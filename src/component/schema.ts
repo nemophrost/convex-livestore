@@ -6,21 +6,15 @@ export default defineSchema({
     storeId: v.string(),
     seqNum: v.number(),
     parentSeqNum: v.number(),
-    clientSeqNum: v.number(),
     name: v.string(),
-    data: v.string(), // JSON-encoded event args
+    args: v.string(), // JSON-encoded event args
     clientId: v.string(),
     sessionId: v.string(),
     userId: v.optional(v.string()),
   })
     .index("by_storeId", ["storeId"])
     .index("by_storeId_seqNum", ["storeId", "seqNum"])
-    .index("by_storeId_userId", ["storeId", "userId"])
-    .index("by_storeId_clientId_clientSeqNum", [
-      "storeId",
-      "clientId",
-      "clientSeqNum",
-    ]),
+    .index("by_storeId_userId", ["storeId", "userId"]),
   livestoreHeads: defineTable({
     storeId: v.string(),
     seqNum: v.number(),

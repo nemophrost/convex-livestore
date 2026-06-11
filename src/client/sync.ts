@@ -19,7 +19,7 @@ export interface ConvexLivestoreApiRefs {
         seqNum: number;
         parentSeqNum: number;
         name: string;
-        data: string;
+        args: string;
         clientId: string;
         sessionId: string;
       }>;
@@ -41,7 +41,7 @@ export interface ConvexLivestoreApiRefs {
         seqNum: number;
         parentSeqNum: number;
         name: string;
-        data: string;
+        args: string;
         clientId: string;
         sessionId: string;
         userId?: string | null;
@@ -55,7 +55,7 @@ type PullEvent = {
   seqNum: number;
   parentSeqNum: number;
   name: string;
-  data: string;
+  args: string;
   clientId: string;
   sessionId: string;
 };
@@ -68,7 +68,7 @@ function mapEvents(events: readonly PullEvent[]) {
   return events.map((e) => ({
     eventEncoded: {
       name: e.name,
-      args: JSON.parse(e.data),
+      args: JSON.parse(e.args),
       seqNum: e.seqNum as EventSequenceNumberGlobal,
       parentSeqNum: e.parentSeqNum as EventSequenceNumberGlobal,
       clientId: e.clientId,
@@ -83,7 +83,7 @@ const DEBUG_PREFIX = "Convex Livestore Sync: ";
 /**
  * Creates a LiveStore SyncBackend that uses Convex as the event store.
  *
- * Push: sends events to Convex via mutation (server assigns seqNums)
+ * Push: sends events to Convex via mutation (server validates seqNums)
  * Pull: subscribes to head signal, fetches new events on change
  *
  * Usage:
@@ -225,7 +225,7 @@ export function makeConvexSyncBackend(
                   seqNum: e.seqNum,
                   parentSeqNum: e.parentSeqNum,
                   name: e.name,
-                  data: JSON.stringify(e.args),
+                  args: JSON.stringify(e.args),
                   clientId: e.clientId,
                   sessionId: e.sessionId,
                 })),
