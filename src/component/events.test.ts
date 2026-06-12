@@ -151,6 +151,142 @@ describe("component lib", () => {
     expect(page2.hasMore).toBe(false);
   });
 
+  test("listEvents paginates newest-first with paginationOpts", async () => {
+    const t = initConvexTest();
+    const storeId = "store-1";
+
+    await t.mutation(api.events.push, {
+      storeId,
+      events: Array.from({ length: 3 }, (_, i) => ({
+        seqNum: i + 1,
+        parentSeqNum: i,
+        name: `e${i + 1}`,
+        args: "{}",
+        clientId: "c1",
+        sessionId: "s1",
+      })),
+    });
+
+    const page1 = await t.query(api.events.listEvents, {
+      storeId,
+      paginationOpts: { cursor: null, numItems: 2 },
+    });
+    expect(page1.page.map((event) => event.seqNum)).toEqual([3, 2]);
+    expect(page1.isDone).toBe(false);
+    expect(page1.continueCursor).toEqual(expect.any(String));
+    expect(page1.page[0].createdAt).toEqual(expect.any(Number));
+
+    const page2 = await t.query(api.events.listEvents, {
+      storeId,
+      paginationOpts: { cursor: page1.continueCursor, numItems: 2 },
+    });
+    expect(page2.page.map((event) => event.seqNum)).toEqual([1]);
+    expect(page2.isDone).toBe(true);
+  });
+
+  test("listEvents can filter by stored userId", async () => {
+    const t = initConvexTest();
+    const storeId = "store-1";
+
+    await t.mutation(api.events.push, {
+      storeId,
+      userId: "user-1",
+      events: [
+        {
+          seqNum: 1,
+          parentSeqNum: 0,
+          name: "event1",
+          args: "{}",
+          clientId: "c1",
+          sessionId: "s1",
+        },
+      ],
+    });
+    await t.mutation(api.events.push, {
+      storeId,
+      userId: "user-2",
+      events: [
+        {
+          seqNum: 2,
+          parentSeqNum: 1,
+          name: "event2",
+          args: "{}",
+          clientId: "c2",
+          sessionId: "s2",
+        },
+      ],
+    });
+    await t.mutation(api.events.push, {
+      storeId,
+      userId: "user-1",
+      events: [
+        {
+          seqNum: 3,
+          parentSeqNum: 2,
+          name: "event3",
+          args: "{}",
+          clientId: "c1",
+          sessionId: "s1",
+        },
+      ],
+    });
+
+    const result = await t.query(api.events.listEvents, {
+      storeId,
+      userId: "user-1",
+      paginationOpts: { cursor: null, numItems: 50 },
+    });
+    expect(result.page.map((event) => event.seqNum)).toEqual([3, 1]);
+    expect(result.isDone).toBe(true);
+  });
+
+  test("listEvents preserves since and until while paginating", async () => {
+    const t = initConvexTest();
+    const storeId = "store-1";
+
+    for (let seqNum = 1; seqNum <= 4; seqNum++) {
+      await t.mutation(api.events.push, {
+        storeId,
+        events: [
+          {
+            seqNum,
+            parentSeqNum: seqNum - 1,
+            name: `e${seqNum}`,
+            args: "{}",
+            clientId: "c1",
+            sessionId: "s1",
+          },
+        ],
+      });
+    }
+
+    const allEvents = await t.query(api.events.listEvents, {
+      storeId,
+      paginationOpts: { cursor: null, numItems: 50 },
+    });
+    const createdAtBySeqNum = new Map(
+      allEvents.page.map((event) => [event.seqNum, event.createdAt]),
+    );
+
+    const page1 = await t.query(api.events.listEvents, {
+      storeId,
+      since: createdAtBySeqNum.get(2),
+      until: createdAtBySeqNum.get(4),
+      paginationOpts: { cursor: null, numItems: 2 },
+    });
+    expect(page1.page.map((event) => event.seqNum)).toEqual([4, 3]);
+    expect(page1.isDone).toBe(false);
+
+    const page2 = await t.query(api.events.listEvents, {
+      storeId,
+      since: createdAtBySeqNum.get(2),
+      until: createdAtBySeqNum.get(4),
+      paginationOpts: { cursor: page1.continueCursor, numItems: 2 },
+    });
+    expect(page2.page.map((event) => event.seqNum)).toEqual([2]);
+    expect(page2.isDone).toBe(true);
+  });
+
   test("idempotent push (duplicate events are skipped)", async () => {
     const t = initConvexTest();
     const storeId = "store-1";

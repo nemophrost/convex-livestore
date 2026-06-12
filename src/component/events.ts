@@ -1,8 +1,13 @@
-import { paginationOptsValidator } from "convex/server";
+import { paginationOptsValidator, type IndexRangeBuilder } from "convex/server";
 import { v } from "convex/values";
+import type { Doc } from "./_generated/dataModel.js";
 import { mutation, query } from "./_generated/server.js";
 
 const MAX_EVENTS_PER_PUSH = 500;
+const PULL_PAGE_SIZE = 100;
+const MAX_PULL_PAGE_SIZE = 500;
+const LIST_EVENTS_PAGE_SIZE = 50;
+const MAX_LIST_EVENTS_PAGE_SIZE = 200;
 
 type PushEvent = {
   seqNum: number;
@@ -13,10 +18,38 @@ type PushEvent = {
   sessionId: string;
 };
 
+type ListEventDoc = Doc<"livestoreEvents">;
+type ListEventsIndexRange =
+  | IndexRangeBuilder<ListEventDoc, ["storeId", "_creationTime"], 1>
+  | IndexRangeBuilder<ListEventDoc, ["storeId", "userId", "_creationTime"], 2>;
+type CreationTimeUpperBound = {
+  value: number;
+  inclusive: boolean;
+};
+const LIST_EVENTS_START_CURSOR = JSON.stringify({ createdAt: null });
+
 function assertSequenceNumber(value: number, field: string) {
   if (!Number.isInteger(value) || value < 0) {
     throw new Error(`${field} must be a non-negative integer`);
   }
+}
+
+function assertTimestamp(value: number, field: string) {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${field} must be a non-negative finite number`);
+  }
+}
+
+function resolvePageSize(
+  value: number | undefined,
+  defaultValue: number,
+  maxValue: number,
+) {
+  const pageSize = value ?? defaultValue;
+  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > maxValue) {
+    throw new Error(`pageSize must be an integer between 1 and ${maxValue}`);
+  }
+  return pageSize;
 }
 
 function assertValidJson(args: string) {
@@ -36,6 +69,89 @@ function eventsMatch(existing: PushEvent, event: PushEvent) {
     existing.sessionId === event.sessionId &&
     existing.args === event.args
   );
+}
+
+function mapListEvent(event: ListEventDoc) {
+  return {
+    seqNum: event.seqNum,
+    parentSeqNum: event.parentSeqNum,
+    name: event.name,
+    args: event.args,
+    clientId: event.clientId,
+    sessionId: event.sessionId,
+    userId: event.userId,
+    createdAt: event._creationTime,
+  };
+}
+
+function encodeListEventsCursor(
+  event: ListEventDoc | undefined,
+  fallbackCursor: string | null,
+) {
+  if (event === undefined) return fallbackCursor ?? LIST_EVENTS_START_CURSOR;
+  return JSON.stringify({ createdAt: event._creationTime });
+}
+
+function decodeListEventsCursor(cursor: string | null) {
+  if (cursor === null) return undefined;
+  let parsed;
+  try {
+    parsed = JSON.parse(cursor) as { createdAt?: unknown };
+  } catch {
+    throw new Error("Invalid listEvents cursor");
+  }
+  if (parsed.createdAt === null) {
+    return undefined;
+  }
+  if (typeof parsed.createdAt !== "number") {
+    throw new Error("Invalid listEvents cursor");
+  }
+  assertTimestamp(parsed.createdAt, "cursor.createdAt");
+  return parsed.createdAt;
+}
+
+function resolveCreationTimeUpperBound(
+  cursor: number | undefined,
+  until: number | undefined,
+): CreationTimeUpperBound | undefined {
+  if (cursor === undefined) {
+    return until === undefined ? undefined : { value: until, inclusive: true };
+  }
+
+  // `until` is inclusive, but the cursor is the last event from the previous
+  // page, so it must be exclusive to avoid returning that event again.
+  if (until !== undefined && until < cursor) {
+    return { value: until, inclusive: true };
+  }
+  return { value: cursor, inclusive: false };
+}
+
+function withCreationTimeBounds(
+  q: ListEventsIndexRange,
+  {
+    since,
+    until,
+    cursor,
+  }: {
+    since: number | undefined;
+    until: number | undefined;
+    cursor: number | undefined;
+  },
+) {
+  const upperBound = resolveCreationTimeUpperBound(cursor, until);
+  if (since !== undefined && upperBound !== undefined) {
+    const lowerBounded = q.gte("_creationTime", since);
+    return upperBound.inclusive
+      ? lowerBounded.lte("_creationTime", upperBound.value)
+      : lowerBounded.lt("_creationTime", upperBound.value);
+  }
+  if (since !== undefined) return q.gte("_creationTime", since);
+  if (upperBound !== undefined) {
+    return upperBound.inclusive
+      ? q.lte("_creationTime", upperBound.value)
+      : q.lt("_creationTime", upperBound.value);
+  }
+  return q;
 }
 
 function validateBatchLength(events: PushEvent[]) {
@@ -191,8 +307,6 @@ export const getHead = query({
   },
 });
 
-const PULL_PAGE_SIZE = 100;
-
 export const pull = query({
   args: {
     storeId: v.string(),
@@ -200,7 +314,12 @@ export const pull = query({
     pageSize: v.optional(v.number()),
   },
   handler: async (ctx, { storeId, afterSeqNum, pageSize: pageSizeArg }) => {
-    const pageSize = pageSizeArg ?? PULL_PAGE_SIZE;
+    assertSequenceNumber(afterSeqNum, "afterSeqNum");
+    const pageSize = resolvePageSize(
+      pageSizeArg,
+      PULL_PAGE_SIZE,
+      MAX_PULL_PAGE_SIZE,
+    );
 
     const events = await ctx.db
       .query("livestoreEvents")
@@ -236,31 +355,53 @@ export const listEvents = query({
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, { storeId, userId, since, until, paginationOpts }) => {
-    if (userId !== undefined) {
-      return ctx.db
-        .query("livestoreEvents")
-        .withIndex("by_storeId_userId", (q) => {
-          const base = q.eq("storeId", storeId).eq("userId", userId);
-          if (since !== undefined && until !== undefined)
-            return base.gte("_creationTime", since).lte("_creationTime", until);
-          if (since !== undefined) return base.gte("_creationTime", since);
-          if (until !== undefined) return base.lte("_creationTime", until);
-          return base;
-        })
-        .order("desc")
-        .paginate(paginationOpts);
+    const cursor = decodeListEventsCursor(paginationOpts.cursor);
+    if (since !== undefined) {
+      assertTimestamp(since, "since");
     }
-    return ctx.db
-      .query("livestoreEvents")
-      .withIndex("by_storeId", (q) => {
-        const base = q.eq("storeId", storeId);
-        if (since !== undefined && until !== undefined)
-          return base.gte("_creationTime", since).lte("_creationTime", until);
-        if (since !== undefined) return base.gte("_creationTime", since);
-        if (until !== undefined) return base.lte("_creationTime", until);
-        return base;
-      })
-      .order("desc")
-      .paginate(paginationOpts);
+    if (until !== undefined) {
+      assertTimestamp(until, "until");
+    }
+    if (since !== undefined && until !== undefined && since > until) {
+      throw new Error("since must be less than or equal to until");
+    }
+    const pageSize = resolvePageSize(
+      paginationOpts.numItems,
+      LIST_EVENTS_PAGE_SIZE,
+      MAX_LIST_EVENTS_PAGE_SIZE,
+    );
+
+    const events =
+      userId === undefined
+        ? await ctx.db
+            .query("livestoreEvents")
+            .withIndex("by_storeId", (q) =>
+              withCreationTimeBounds(q.eq("storeId", storeId), {
+                since,
+                until,
+                cursor,
+              }),
+            )
+            .order("desc")
+            .take(pageSize + 1)
+        : await ctx.db
+            .query("livestoreEvents")
+            .withIndex("by_storeId_userId", (q) =>
+              withCreationTimeBounds(
+                q.eq("storeId", storeId).eq("userId", userId),
+                { since, until, cursor },
+              ),
+            )
+            .order("desc")
+            .take(pageSize + 1);
+
+    const isDone = events.length <= pageSize;
+    const page = isDone ? events : events.slice(0, pageSize);
+    const lastEvent = page[page.length - 1];
+    return {
+      page: page.map(mapListEvent),
+      isDone,
+      continueCursor: encodeListEventsCursor(lastEvent, paginationOpts.cursor),
+    };
   },
 });

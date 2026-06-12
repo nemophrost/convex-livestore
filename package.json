@@ -1,7 +1,10 @@
 {
   "name": "convex-livestore",
   "description": "A livestore adapter component for Convex.",
-  "repository": "github:nemophrost/convex-livestore",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nemophrost/convex-livestore.git"
+  },
   "homepage": "https://github.com/nemophrost/convex-livestore#readme",
   "bugs": {
     "url": "https://github.com/nemophrost/convex-livestore/issues"
@@ -22,9 +25,10 @@
     "predev": "path-exists .env.local dist || (npm run build && convex dev --once)",
     "build": "tsc --project ./tsconfig.build.json",
     "build:codegen": "npx convex codegen --component-dir ./src/component && npm run build",
-    "build:clean": "rm -rf dist *.tsbuildinfo && npm run build:codegen",
+    "build:clean": "rm -rf dist *.tsbuildinfo && npm run build",
     "typecheck": "tsc --noEmit && tsc -p example && tsc -p example/convex",
     "lint": "eslint .",
+    "format": "prettier --write src/",
     "all": "run-p -r 'dev:*' 'test:watch'",
     "test": "vitest run --typecheck",
     "test:watch": "vitest --typecheck --clearScreen false",

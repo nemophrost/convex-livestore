@@ -88,15 +88,11 @@ export function exposeApi(
         storeId: v.string(),
       },
       handler: async (ctx, args) => {
-        try {
-          const storeId = await options.transformStoreId(ctx, {
-            storeId: args.storeId,
-            op: "getHead",
-          });
-          return await ctx.runQuery(component.events.getHead, { storeId });
-        } catch {
-          return null;
-        }
+        const storeId = await options.transformStoreId(ctx, {
+          storeId: args.storeId,
+          op: "getHead",
+        });
+        return await ctx.runQuery(component.events.getHead, { storeId });
       },
     }),
     clearStore: mutationGeneric({
@@ -116,19 +112,15 @@ export function exposeApi(
         pageSize: v.optional(v.number()),
       },
       handler: async (ctx, args) => {
-        try {
-          const storeId = await options.transformStoreId(ctx, {
-            storeId: args.storeId,
-            op: "pull",
-          });
-          return await ctx.runQuery(component.events.pull, {
-            storeId,
-            afterSeqNum: args.afterSeqNum,
-            pageSize: args.pageSize,
-          });
-        } catch {
-          return null;
-        }
+        const storeId = await options.transformStoreId(ctx, {
+          storeId: args.storeId,
+          op: "pull",
+        });
+        return await ctx.runQuery(component.events.pull, {
+          storeId,
+          afterSeqNum: args.afterSeqNum,
+          pageSize: args.pageSize,
+        });
       },
     }),
     listEvents: queryGeneric({
@@ -140,21 +132,17 @@ export function exposeApi(
         paginationOpts: paginationOptsValidator,
       },
       handler: async (ctx, args) => {
-        try {
-          const storeId = await options.transformStoreId(ctx, {
-            storeId: args.storeId,
-            op: "listEvents",
-          });
-          return await ctx.runQuery(component.events.listEvents, {
-            storeId,
-            userId: args.userId,
-            since: args.since,
-            until: args.until,
-            paginationOpts: args.paginationOpts,
-          });
-        } catch {
-          return null;
-        }
+        const storeId = await options.transformStoreId(ctx, {
+          storeId: args.storeId,
+          op: "listEvents",
+        });
+        return await ctx.runQuery(component.events.listEvents, {
+          storeId,
+          userId: args.userId,
+          since: args.since,
+          until: args.until,
+          paginationOpts: args.paginationOpts,
+        });
       },
     }),
   };

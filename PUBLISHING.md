@@ -18,6 +18,12 @@ This produces a `.tgz` file in the project root. Install it in another project w
 pnpm add /path/to/convex-livestore-x.y.z.tgz
 ```
 
+If component function signatures changed, regenerate the checked-in Convex component API before packing:
+
+```sh
+pnpm run build:codegen
+```
+
 ## Publishing
 
 Set the version in `package.json` to match the current `@livestore/common` version, then run:

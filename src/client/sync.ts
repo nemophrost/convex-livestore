@@ -26,12 +26,7 @@ export interface ConvexLivestoreApiRefs {
     },
     void
   >;
-  getHead: FunctionReference<
-    "query",
-    "public",
-    { storeId: string },
-    number | null
-  >;
+  getHead: FunctionReference<"query", "public", { storeId: string }, number>;
   pullEvents: FunctionReference<
     "query",
     "public",
@@ -47,7 +42,7 @@ export interface ConvexLivestoreApiRefs {
         userId?: string | null;
       }>;
       hasMore: boolean;
-    } | null
+    }
   >;
 }
 
@@ -79,6 +74,10 @@ function mapEvents(events: readonly PullEvent[]) {
 }
 
 const DEBUG_PREFIX = "Convex Livestore Sync: ";
+
+function toUnknownError(error: unknown): UnknownError {
+  return new UnknownError({ cause: error });
+}
 
 /**
  * Creates a LiveStore SyncBackend that uses Convex as the event store.
@@ -130,18 +129,19 @@ export function makeConvexSyncBackend(
                 storeId,
                 afterSeqNum: cursor,
               });
-              debugLog(
-                `${DEBUG_PREFIX}Pulled ${result?.events.length ?? 0} events`,
-                { hasMore: result?.hasMore },
-              );
+              debugLog(`${DEBUG_PREFIX}Pulled ${result.events.length} events`, {
+                hasMore: result.hasMore,
+              });
               return result;
             }
 
             async function fetchAllPages() {
+              let emittedEvents = false;
               while (true) {
                 const result = await fetchOnePage();
-                if (!result || result.events.length === 0) break;
+                if (result.events.length === 0) break;
                 cursor = result.events[result.events.length - 1].seqNum;
+                emittedEvents = true;
                 await emit.single({
                   batch: mapEvents(result.events),
                   pageInfo: result.hasMore
@@ -150,19 +150,30 @@ export function makeConvexSyncBackend(
                 });
                 if (!result.hasMore) break;
               }
+              return emittedEvents;
             }
 
             if (!live) {
               // Non-live: paginate through all current events, then end the stream
               void fetchAllPages()
-                .catch((error) => console.error("Pull fetch failed:", error))
-                .finally(() => emit.end());
+                .then(() => emit.end())
+                .catch((error) => emit.fail(toUnknownError(error)));
               return Effect.void;
             }
 
             // Live: subscribe to head changes, fetch on each change
             let fetching = false;
             let queuedFetch = false;
+            let emittedCaughtUp = false;
+
+            async function emitCaughtUpOnce() {
+              if (emittedCaughtUp) return;
+              emittedCaughtUp = true;
+              await emit.single({
+                batch: [],
+                pageInfo: SyncBackend.pageInfoNoMore,
+              });
+            }
 
             async function fetchUpdates() {
               if (fetching) {
@@ -172,11 +183,18 @@ export function makeConvexSyncBackend(
                 queuedFetch = true;
                 return;
               }
-              const headSeqNum = watch.localQueryResult();
+              let headSeqNum;
+              try {
+                headSeqNum = watch.localQueryResult();
+              } catch (error) {
+                await emit.fail(toUnknownError(error));
+                return;
+              }
               if (headSeqNum == null || headSeqNum <= cursor) {
                 debugLog(
                   `${DEBUG_PREFIX}Head changed but no new events (head=${headSeqNum}, cursor=${cursor})`,
                 );
+                await emitCaughtUpOnce();
                 return;
               }
               debugLog(
@@ -184,9 +202,13 @@ export function makeConvexSyncBackend(
               );
               fetching = true;
               try {
-                await fetchAllPages();
+                const emittedEvents = await fetchAllPages();
+                if (!emittedEvents) {
+                  await emitCaughtUpOnce();
+                }
               } catch (error) {
                 console.error("Pull fetch failed:", error);
+                await emit.fail(toUnknownError(error));
               } finally {
                 fetching = false;
                 if (queuedFetch) {
@@ -199,10 +221,7 @@ export function makeConvexSyncBackend(
             debugLog(`${DEBUG_PREFIX}Subscribing to head changes`);
             const watch = convex.watchQuery(apiRefs.getHead, { storeId });
             const unsubscribe = watch.onUpdate(() => {
-              debugLog(
-                `${DEBUG_PREFIX}Head change received`,
-                watch.localQueryResult(),
-              );
+              debugLog(`${DEBUG_PREFIX}Head change received`);
               void fetchUpdates();
             });
             // Kick off initial fetch (onUpdate may not fire if result is already cached)

@@ -71,6 +71,8 @@ The sync API stores LiveStore global events as an append-only log. Event payload
 `listEvents` is a paginated query for browsing a store's event log, newest-first. It's intended for admin or audit views, not for sync. Use it with Convex's [`usePaginatedQuery`](https://docs.convex.dev/api/modules/react#usepaginatedquery):
 
 ```ts
+import { usePaginatedQuery } from "convex/react";
+
 const { results, status, loadMore } = usePaginatedQuery(
   api.example.listEvents,
   { storeId: "user" },

@@ -52,9 +52,9 @@ describe("client tests", () => {
       storeId: "user",
       afterSeqNum: 0,
     });
-    expect(result!.events).toHaveLength(1);
-    expect(result!.events[0].name).toBe("testEvent");
-    expect(result!.events[0].args).toBe('{"key":"value"}');
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0].name).toBe("testEvent");
+    expect(result.events[0].args).toBe('{"key":"value"}');
   });
 
   test("different users have isolated stores", async () => {
@@ -93,20 +93,21 @@ describe("client tests", () => {
       storeId: "user",
       afterSeqNum: 0,
     });
-    expect(events1!.events).toHaveLength(1);
-    expect(events1!.events[0].name).toBe("user1Event");
+    expect(events1.events).toHaveLength(1);
+    expect(events1.events[0].name).toBe("user1Event");
 
     const events2 = await t2.query(testApi.pullEvents, {
       storeId: "user",
       afterSeqNum: 0,
     });
-    expect(events2!.events).toHaveLength(1);
-    expect(events2!.events[0].name).toBe("user2Event");
+    expect(events2.events).toHaveLength(1);
+    expect(events2.events[0].name).toBe("user2Event");
   });
 
-  test("unauthenticated request returns null", async () => {
+  test("unauthenticated request rejects", async () => {
     const t = initConvexTest();
-    const head = await t.query(testApi.getHead, { storeId: "user" });
-    expect(head).toBeNull();
+    await expect(t.query(testApi.getHead, { storeId: "user" })).rejects.toThrow(
+      "Not authenticated",
+    );
   });
 });
