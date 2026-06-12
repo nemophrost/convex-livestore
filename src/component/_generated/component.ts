@@ -70,8 +70,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           events: Array<{
-            clientId: string;
             args: string;
+            clientId: string;
             name: string;
             parentSeqNum: number;
             seqNum: number;

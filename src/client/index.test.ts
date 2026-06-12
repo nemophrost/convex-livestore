@@ -1,7 +1,21 @@
-import { anyApi, type ApiFromModules } from "convex/server";
+import {
+  anyApi,
+  type ApiFromModules,
+  type DataModelFromSchemaDefinition,
+  defineSchema,
+  defineTable,
+} from "convex/server";
+import { v } from "convex/values";
 import { describe, expect, test } from "vitest";
 import { exposeApi } from "./index.js";
 import { components, initConvexTest } from "./setup.test.js";
+
+const testSchema = defineSchema({
+  users: defineTable({
+    subject: v.string(),
+  }).index("by_subject", ["subject"]),
+});
+type TestDataModel = DataModelFromSchemaDefinition<typeof testSchema>;
 
 export const { pushEvents, getHead, pullEvents } = exposeApi(
   components.livestoreAdapter,
@@ -28,6 +42,29 @@ const testApi = (
 )["index.test"];
 
 describe("client tests", () => {
+  test("exposeApi callbacks can be typed with the caller data model", () => {
+    const typedApi = exposeApi<TestDataModel>(components.livestoreAdapter, {
+      transformStoreId: async (ctx, { storeId }) => {
+        const user = await ctx.db
+          .query("users")
+          .withIndex("by_subject", (q) => q.eq("subject", storeId))
+          .first();
+
+        // @ts-expect-error transformStoreId intentionally receives a read-only context.
+        await ctx.db.insert("users", { subject: "blocked" });
+
+        if (!user) throw new Error("Unknown user");
+        return user._id;
+      },
+      resolveUserId: async (ctx) => {
+        return await ctx.db.insert("users", { subject: "created-from-push" });
+      },
+    });
+
+    expect(testSchema).toBeTruthy();
+    expect(typedApi.getHead).toBeTruthy();
+  });
+
   test("exposeApi transformStoreId callback is invoked and storeId is scoped", async () => {
     const t = initConvexTest().withIdentity({ subject: "user-1" });
 

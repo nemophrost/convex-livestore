@@ -1,6 +1,8 @@
 import {
+  type MutationBuilder,
   mutationGeneric,
   paginationOptsValidator,
+  type QueryBuilder,
   queryGeneric,
   type GenericDataModel,
   type GenericMutationCtx,
@@ -9,12 +11,45 @@ import {
 import { v } from "convex/values";
 import type { ComponentApi } from "../component/_generated/component.js";
 
+export type ExposeApiOperation =
+  | "push"
+  | "getHead"
+  | "pull"
+  | "clearStore"
+  | "listEvents";
+
+export type ExposeApiOptions<
+  DataModel extends GenericDataModel = GenericDataModel,
+> = {
+  /**
+   * Validate or transform the passed storeId.
+   * Called for all operations. Throw an error to reject the request.
+   */
+  transformStoreId: (
+    ctx: GenericQueryCtx<DataModel>,
+    params: {
+      storeId: string;
+      op: ExposeApiOperation;
+    },
+  ) => Promise<string>;
+  /**
+   * Optionally resolve the userId to store with each pushed event.
+   * Called only for push operations, after transformStoreId resolves.
+   */
+  resolveUserId?: (
+    ctx: GenericMutationCtx<DataModel>,
+    params: { storeId: string },
+  ) => Promise<string | null | undefined>;
+};
+
 /**
  * For re-exporting component functions with auth wrappers.
  *
  * Usage:
  * ```ts
- * export const { pushEvents, getHead, pullEvents } = exposeApi(
+ * import type { DataModel } from "./_generated/dataModel.js";
+ *
+ * export const { pushEvents, getHead, pullEvents } = exposeApi<DataModel>(
  *   components.livestoreAdapter,
  *   {
  *     transformStoreId: async (ctx, { storeId, op }) => {
@@ -31,32 +66,14 @@ import type { ComponentApi } from "../component/_generated/component.js";
  * );
  * ```
  */
-export function exposeApi(
-  component: ComponentApi,
-  options: {
-    /**
-     * Validate or transform the passed storeId.
-     * Called for all operations. Throw an error to reject the request.
-     */
-    transformStoreId: (
-      ctx: GenericQueryCtx<GenericDataModel>,
-      params: {
-        storeId: string;
-        op: "push" | "getHead" | "pull" | "clearStore" | "listEvents";
-      },
-    ) => Promise<string>;
-    /**
-     * Optionally resolve the userId to store with each pushed event.
-     * Called only for push operations, after transformStoreId resolves.
-     */
-    resolveUserId?: (
-      ctx: GenericMutationCtx<GenericDataModel>,
-      params: { storeId: string },
-    ) => Promise<string | null | undefined>;
-  },
-) {
+export function exposeApi<
+  DataModel extends GenericDataModel = GenericDataModel,
+>(component: ComponentApi, options: ExposeApiOptions<DataModel>) {
+  const mutation = mutationGeneric as MutationBuilder<DataModel, "public">;
+  const query = queryGeneric as QueryBuilder<DataModel, "public">;
+
   return {
-    pushEvents: mutationGeneric({
+    pushEvents: mutation({
       args: {
         storeId: v.string(),
         events: v.array(
@@ -83,7 +100,7 @@ export function exposeApi(
         });
       },
     }),
-    getHead: queryGeneric({
+    getHead: query({
       args: {
         storeId: v.string(),
       },
@@ -95,7 +112,7 @@ export function exposeApi(
         return await ctx.runQuery(component.events.getHead, { storeId });
       },
     }),
-    clearStore: mutationGeneric({
+    clearStore: mutation({
       args: { storeId: v.string() },
       handler: async (ctx, args) => {
         const storeId = await options.transformStoreId(ctx, {
@@ -105,7 +122,7 @@ export function exposeApi(
         return await ctx.runMutation(component.events.clearStore, { storeId });
       },
     }),
-    pullEvents: queryGeneric({
+    pullEvents: query({
       args: {
         storeId: v.string(),
         afterSeqNum: v.number(),
@@ -123,7 +140,7 @@ export function exposeApi(
         });
       },
     }),
-    listEvents: queryGeneric({
+    listEvents: query({
       args: {
         storeId: v.string(),
         userId: v.optional(v.string()),

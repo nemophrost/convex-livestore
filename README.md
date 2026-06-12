@@ -27,13 +27,15 @@ export default app;
 ## Server-side setup
 
 Use `exposeApi` to expose the sync functions from your Convex backend. The `transformStoreId` callback runs on every request — use it to authenticate the caller and map the client-supplied `storeId` to the one stored internally.
+Pass your app's generated `DataModel` type to get typed database readers and writers inside the callbacks.
 
 ```ts
 // convex/example.ts
 import { exposeApi } from "convex-livestore";
 import { components } from "./_generated/api.js";
+import type { DataModel } from "./_generated/dataModel.js";
 
-export const { pushEvents, getHead, pullEvents, clearStore, listEvents } = exposeApi(
+export const { pushEvents, getHead, pullEvents, clearStore, listEvents } = exposeApi<DataModel>(
   components.livestoreAdapter,
   {
     transformStoreId: async (ctx, { storeId, op }) => {
