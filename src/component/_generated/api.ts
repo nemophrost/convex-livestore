@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as errors from "../errors.js";
 import type * as events from "../events.js";
 
 import type {
@@ -18,6 +19,7 @@ import type {
 import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
+  errors: typeof errors;
   events: typeof events;
 }> = anyApi as any;
 

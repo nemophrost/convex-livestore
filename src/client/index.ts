@@ -166,3 +166,8 @@ export function exposeApi<
 }
 
 export type { ComponentApi };
+export { ErrorCode } from "../component/errors.js";
+export type {
+  ErrorCode as ErrorCodeType,
+  ConvexLivestoreErrorData,
+} from "../component/errors.js";

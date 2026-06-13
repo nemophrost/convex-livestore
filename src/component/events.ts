@@ -2,6 +2,7 @@ import { paginationOptsValidator, type IndexRangeBuilder } from "convex/server";
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel.js";
 import { mutation, query } from "./_generated/server.js";
+import { ErrorCode, throwError } from "./errors.js";
 
 const MAX_EVENTS_PER_PUSH = 500;
 const PULL_PAGE_SIZE = 100;
@@ -30,13 +31,19 @@ const LIST_EVENTS_START_CURSOR = JSON.stringify({ createdAt: null });
 
 function assertSequenceNumber(value: number, field: string) {
   if (!Number.isInteger(value) || value < 0) {
-    throw new Error(`${field} must be a non-negative integer`);
+    throwError(
+      ErrorCode.INVALID_SEQ_NUM,
+      `${field} must be a non-negative integer`,
+    );
   }
 }
 
 function assertTimestamp(value: number, field: string) {
   if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`${field} must be a non-negative finite number`);
+    throwError(
+      ErrorCode.INVALID_TIMESTAMP,
+      `${field} must be a non-negative finite number`,
+    );
   }
 }
 
@@ -47,7 +54,10 @@ function resolvePageSize(
 ) {
   const pageSize = value ?? defaultValue;
   if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > maxValue) {
-    throw new Error(`pageSize must be an integer between 1 and ${maxValue}`);
+    throwError(
+      ErrorCode.INVALID_PAGE_SIZE,
+      `pageSize must be an integer between 1 and ${maxValue}`,
+    );
   }
   return pageSize;
 }
@@ -56,7 +66,7 @@ function assertValidJson(args: string) {
   try {
     JSON.parse(args);
   } catch {
-    throw new Error("Event args must be valid JSON");
+    throwError(ErrorCode.INVALID_ARGS_JSON, "Event args must be valid JSON");
   }
 }
 
@@ -98,13 +108,13 @@ function decodeListEventsCursor(cursor: string | null) {
   try {
     parsed = JSON.parse(cursor) as { createdAt?: unknown };
   } catch {
-    throw new Error("Invalid listEvents cursor");
+    throwError(ErrorCode.INVALID_CURSOR, "Invalid listEvents cursor");
   }
   if (parsed.createdAt === null) {
     return undefined;
   }
   if (typeof parsed.createdAt !== "number") {
-    throw new Error("Invalid listEvents cursor");
+    throwError(ErrorCode.INVALID_CURSOR, "Invalid listEvents cursor");
   }
   assertTimestamp(parsed.createdAt, "cursor.createdAt");
   return parsed.createdAt;
@@ -156,10 +166,13 @@ function withCreationTimeBounds(
 
 function validateBatchLength(events: PushEvent[]) {
   if (events.length === 0) {
-    throw new Error("At least one event is required");
+    throwError(ErrorCode.EMPTY_BATCH, "At least one event is required");
   }
   if (events.length > MAX_EVENTS_PER_PUSH) {
-    throw new Error(`Cannot push more than ${MAX_EVENTS_PER_PUSH} events`);
+    throwError(
+      ErrorCode.BATCH_TOO_LARGE,
+      `Cannot push more than ${MAX_EVENTS_PER_PUSH} events`,
+    );
   }
 }
 
@@ -173,12 +186,14 @@ function validateBatch(events: PushEvent[], currentSeqNum: number) {
     assertValidJson(event.args);
 
     if (event.parentSeqNum !== expectedParentSeqNum) {
-      throw new Error(
+      throwError(
+        ErrorCode.SEQ_NUM_CONFLICT,
         `Event parentSeqNum mismatch: expected ${expectedParentSeqNum}, got ${event.parentSeqNum}`,
       );
     }
     if (event.seqNum !== event.parentSeqNum + 1) {
-      throw new Error(
+      throwError(
+        ErrorCode.SEQ_NUM_CONFLICT,
         `Event seqNum mismatch: expected ${event.parentSeqNum + 1}, got ${event.seqNum}`,
       );
     }
@@ -222,7 +237,8 @@ export const push = mutation({
           .first();
 
         if (existing !== null && !eventsMatch(existing, event)) {
-          throw new Error(
+          throwError(
+            ErrorCode.DUPLICATE_EVENT_CONFLICT,
             "Duplicate event payload does not match existing event",
           );
         }
@@ -237,7 +253,10 @@ export const push = mutation({
     }
 
     if (existingChecks.some((existing) => existing !== null)) {
-      throw new Error("Cannot push a partially duplicated event batch");
+      throwError(
+        ErrorCode.PARTIAL_DUPLICATE_BATCH,
+        "Cannot push a partially duplicated event batch",
+      );
     }
 
     validateBatch(events, currentSeqNum);
@@ -363,7 +382,10 @@ export const listEvents = query({
       assertTimestamp(until, "until");
     }
     if (since !== undefined && until !== undefined && since > until) {
-      throw new Error("since must be less than or equal to until");
+      throwError(
+        ErrorCode.INVALID_TIME_RANGE,
+        "since must be less than or equal to until",
+      );
     }
     const pageSize = resolvePageSize(
       paginationOpts.numItems,
